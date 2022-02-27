@@ -1,0 +1,18 @@
+[package]
+name = "soundsproxy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4"
+futures = "0.3"
+hhmmss = "0.1.0"
+hyper = { version = "0.14", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+rss = "2.0"
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+serde_with = "*"
+tokio = { version = "1", features = ["full"] }
