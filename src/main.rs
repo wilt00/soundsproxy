@@ -13,7 +13,7 @@ use std::time::Duration;
 type GenericError = Box<dyn std::error::Error + Send + Sync>;
 type ApiResult<T> = std::result::Result<T, GenericError>;
 
-// const USER_AGENT: &str = "soundsproxy/0.1";
+const PORT: u16 = 8223;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct PodContainer {
@@ -169,29 +169,12 @@ async fn get_feed(path: &str) -> Response<Body> {
     let id = path[1..].to_string();
     match try_join!(get_pod_info(&id), get_pod_episodes(&id)) {
         Ok((info, episodes)) => {
-            // dbg!(&info);
             let rss = build_rss(&id, &info, &episodes);
             Response::builder()
                 .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/xml")
+                .header(header::CONTENT_TYPE, "application/rss+xml")
                 .body(Body::from(rss))
                 .unwrap()
-            // serde_json::to_string(&info)
-            //     .map(|json| {
-            //         Response::builder()
-            //             .status(StatusCode::OK)
-            //             .header(header::CONTENT_TYPE, "application/json")
-            //             .body(Body::from(json))
-            //             .unwrap()
-            //     })
-            //     .unwrap_or_else(|e| {
-            //         Response::builder()
-            //             .status(StatusCode::INTERNAL_SERVER_ERROR)
-            //             .body(Body::from(e.to_string()))
-            //             .unwrap()
-            //     })
-            // let body = Body::from(json);
-            // Ok(?)
         }
         Err(e) => Response::builder()
             .status(StatusCode::BAD_GATEWAY)
@@ -217,18 +200,11 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() {
-    // We'll bind to 127.0.0.1:3000
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8223));
-    let client = reqwest::Client::builder()
-        .user_agent("soundsproxy/0.1")
-        .build()
-        .unwrap();
-
-    // A `Service` is needed for every connection, so this
-    // creates one from our `hello_world` function.
-    // let make_svc = make_service_fn(|_conn| async { Ok::<_, reqwest::Error>(service_fn(router)) });
-
-    // let server = Server::bind(&addr).serve(make_svc);
+    let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+    // let client = reqwest::Client::builder()
+    //     .user_agent("soundsproxy/0.1")
+    //     .build()
+    //     .unwrap();
 
     let svc = make_service_fn(move |_| {
         // let c = client.clone();
@@ -236,10 +212,9 @@ async fn main() {
     });
     let srv = Server::bind(&addr).serve(svc);
 
-    // let graceful = srv.with_graceful_shutdown(shutdown_signal());
+    let graceful = srv.with_graceful_shutdown(shutdown_signal());
 
-    // Run this server for... forever!
-    if let Err(e) = srv.await {
+    if let Err(e) = graceful.await {
         eprintln!("server error: {}", e);
     }
 }
