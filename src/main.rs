@@ -89,22 +89,60 @@ struct PodRelease {
     label: String,
 }
 
-async fn get_pod_info(id: &str) -> Result<PodContainer, reqwest::Error> {
+#[derive(Debug, Deserialize, Serialize)]
+struct PodError {
+    id: String,
+    href: String,
+    status: u32,
+    message: String,
+    replied_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PodErrors {
+    errors: Vec<PodError>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum PodContainerResponse {
+    Success(PodContainer),
+    Failure(PodErrors),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum PodEpisodesResponse {
+    Success(PodEpisodes),
+    Failure(PodErrors),
+}
+
+async fn get_pod_info(id: &str) -> Result<PodContainerResponse, reqwest::Error> {
     let url = format!("https://rms.api.bbc.co.uk/v2/programmes/{}/container", id);
     let client = reqwest::Client::builder()
         .user_agent("soundsproxy/0.1")
         .build()?;
-    client.get(url).send().await?.json::<PodContainer>().await
+    client
+        .get(url)
+        .send()
+        .await?
+        .json::<PodContainerResponse>()
+        .await
 }
 
-async fn get_pod_episodes(id: &str) -> Result<PodEpisodes, reqwest::Error> {
+async fn get_pod_episodes(id: &str) -> Result<PodEpisodesResponse, reqwest::Error> {
     let url = format!(
         "https://rms.api.bbc.co.uk/v2/programmes/playable?container={}&sort=sequential&type=episode&experience=domestic",
          id);
     let client = reqwest::Client::builder()
         .user_agent("soundsproxy/0.1")
         .build()?;
-    client.get(url).send().await?.json::<PodEpisodes>().await
+    client
+        .get(url)
+        .send()
+        .await?
+        .json::<PodEpisodesResponse>()
+        .await
 }
 
 fn replace_img_url(input: &str) -> String {
@@ -168,7 +206,7 @@ fn build_rss(id: &str, info: &PodContainer, episodes: &PodEpisodes) -> String {
 async fn get_feed(path: &str) -> Response<Body> {
     let id = path[1..].to_string();
     match try_join!(get_pod_info(&id), get_pod_episodes(&id)) {
-        Ok((info, episodes)) => {
+        Ok((PodContainerResponse::Success(info), PodEpisodesResponse::Success(episodes))) => {
             let rss = build_rss(&id, &info, &episodes);
             Response::builder()
                 .status(StatusCode::OK)
@@ -176,6 +214,11 @@ async fn get_feed(path: &str) -> Response<Body> {
                 .body(Body::from(rss))
                 .unwrap()
         }
+        Ok((PodContainerResponse::Failure(err), _))
+        | Ok((_, PodEpisodesResponse::Failure(err))) => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from(err.errors[0].message.clone()))
+            .unwrap(),
         Err(e) => Response::builder()
             .status(StatusCode::BAD_GATEWAY)
             .body(Body::from(e.to_string()))
